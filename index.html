@@ -1,56 +1,91 @@
+
 <!DOCTYPE html>
 <html>
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>PROJECT BACKROOMS</title>
   <style>
-    body { margin: 0; overflow: hidden; background: #111; }
-    canvas { display: block; }
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: #111;
+      font-family: Arial, sans-serif;
+    }
+
+    canvas {
+      display: block;
+    }
   </style>
 </head>
 <body>
+
 <script type="module">
 import * as THREE from
 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+
 import { VRButton } from
 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/webxr/VRButton.js';
 
+// SCENE
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x242019);
-scene.fog = new THREE.Fog(0x242019, 5, 22);
+scene.fog = new THREE.Fog(0x242019, 5, 24);
 
+// CAMERA
 const camera = new THREE.PerspectiveCamera(
-  75, innerWidth / innerHeight, 0.1, 100
+  75,
+  window.innerWidth / window.innerHeight,
+  0.1,
+  100
 );
-camera.position.set(0, 1.6, 0);
 
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setSize(innerWidth, innerHeight);
+// IMPORTANT: local-floor already provides floor-relative tracking.
+camera.position.set(0, 0, 0);
+
+// RENDERER
+const renderer = new THREE.WebGLRenderer({
+  antialias: true
+});
+
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.xr.enabled = true;
 renderer.xr.setReferenceSpaceType('local-floor');
+
 document.body.appendChild(renderer.domElement);
 document.body.appendChild(VRButton.createButton(renderer));
 
+// PLAYER RIG
 const rig = new THREE.Group();
+rig.position.set(0, 0, 0);
 rig.add(camera);
 scene.add(rig);
 
-// Lighting
+// LIGHTING
 scene.add(new THREE.AmbientLight(0xffffff, 0.8));
 
-const light = new THREE.PointLight(0xffe5a0, 2, 18);
+const light = new THREE.PointLight(
+  0xffe5a0,
+  2,
+  20
+);
+
 light.position.set(0, 2.8, 0);
 scene.add(light);
 
-// Backrooms floor
+// FLOOR
 const floor = new THREE.Mesh(
   new THREE.PlaneGeometry(12, 12),
-  new THREE.MeshStandardMaterial({ color: 0x82764e })
+  new THREE.MeshStandardMaterial({
+    color: 0x82764e
+  })
 );
+
 floor.rotation.x = -Math.PI / 2;
+floor.position.y = 0;
 scene.add(floor);
 
-// Walls
+// WALLS
 const wallMaterial = new THREE.MeshStandardMaterial({
   color: 0xd4c477
 });
@@ -62,113 +97,166 @@ function makeWall(x, y, z, w, h, d) {
     new THREE.BoxGeometry(w, h, d),
     wallMaterial
   );
+
   wall.position.set(x, y, z);
+
   scene.add(wall);
   walls.push(wall);
 }
 
+// ROOM BOUNDARIES
 makeWall(0, 1.5, -6, 12, 3, 0.3);
 makeWall(0, 1.5, 6, 12, 3, 0.3);
 makeWall(-6, 1.5, 0, 0.3, 3, 12);
 makeWall(6, 1.5, 0, 0.3, 3, 12);
 
-// Internal maze walls
+// MAZE
 makeWall(2, 1.5, -2, 0.3, 3, 5);
 makeWall(-2, 1.5, 2, 5, 3, 0.3);
 
-// VR hands
+// COLLISION BOXES
+scene.updateMatrixWorld(true);
+
+const wallBoxes = walls.map(wall =>
+  new THREE.Box3().setFromObject(wall)
+);
+
+// VR HANDS
 const hands = [];
-const previous = [];
-const handGeometry = new THREE.SphereGeometry(0.09, 16, 16);
+const previousHands = [];
+const handReady = [false, false];
+
+const handGeometry = new THREE.SphereGeometry(
+  0.09, 16, 16
+);
+
 const handMaterial = new THREE.MeshStandardMaterial({
   color: 0xffcc99
 });
 
 for (let i = 0; i < 2; i++) {
+
   const hand = renderer.xr.getControllerGrip(i);
-  const visual = new THREE.Mesh(handGeometry, handMaterial);
+
+  const visual = new THREE.Mesh(
+    handGeometry,
+    handMaterial
+  );
+
   hand.add(visual);
   rig.add(hand);
 
   hands.push(hand);
-  previous.push(new THREE.Vector3());
+  previousHands.push(new THREE.Vector3());
 }
 
-// Movement physics
+// PHYSICS
 const velocity = new THREE.Vector3();
+
 const handSphere = new THREE.Sphere(
-  new THREE.Vector3(), 0.14
+  new THREE.Vector3(),
+  0.14
 );
-const wallBoxes = [];
 
-for (const wall of walls) {
-  wallBoxes.push(new THREE.Box3().setFromObject(wall));
-}
-
-let initialized = false;
+const gravity = 9.8;
 
 function isTouching(hand) {
+
   hand.getWorldPosition(handSphere.center);
 
-  // Floor contact
-  if (handSphere.center.y < 0.16 &&
-      Math.abs(handSphere.center.x) < 5.8 &&
-      Math.abs(handSphere.center.z) < 5.8) {
+  // FLOOR CONTACT
+  if (
+    handSphere.center.y < 0.18 &&
+    Math.abs(handSphere.center.x) < 5.8 &&
+    Math.abs(handSphere.center.z) < 5.8
+  ) {
     return true;
   }
 
-  // Wall contact
-  return wallBoxes.some(box =>
-    box.intersectsSphere(handSphere)
-  );
+  // WALL CONTACT
+  for (const box of wallBoxes) {
+    if (box.intersectsSphere(handSphere)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
+// ANIMATION
 renderer.setAnimationLoop((time, frame) => {
+
   const dt = Math.min(
     renderer.xr.isPresenting ? 1 / 72 : 1 / 60,
     0.04
   );
 
-  if (!initialized) {
-    hands.forEach((hand, i) => {
-      hand.getWorldPosition(previous[i]);
-    });
-    initialized = true;
-  }
+  // GORILLA TAG STYLE HAND MOVEMENT
+  for (let i = 0; i < 2; i++) {
 
-  // Gorilla-style pushing
-  hands.forEach((hand, i) => {
-    const current = new THREE.Vector3();
-    hand.getWorldPosition(current);
+    const hand = hands[i];
 
-    if (isTouching(hand)) {
-      const push = previous[i].clone().sub(current);
-      velocity.addScaledVector(push, 7.5);
+    const current = hand.position.clone();
+
+    if (!handReady[i]) {
+      previousHands[i].copy(current);
+      handReady[i] = true;
+      continue;
     }
 
-    hand.getWorldPosition(previous[i]);
-  });
+    if (isTouching(hand)) {
 
-  // Gravity and momentum
-  velocity.y -= 9.8 * dt;
-  velocity.multiplyScalar(0.985);
+      // Move the player opposite to the hand movement.
+      const push = previousHands[i].clone()
+        .sub(current);
 
-  rig.position.addScaledVector(velocity, dt);
+      rig.position.add(push);
 
-  // Keep player above floor
-  if (rig.position.y < 0) {
-    rig.position.y = 0;
-    velocity.y = Math.max(0, velocity.y);
+    }
+
+    previousHands[i].copy(current);
   }
+
+  // GRAVITY
+  velocity.y -= gravity * dt;
+  rig.position.y += velocity.y * dt;
+
+  // FLOOR COLLISION
+  if (rig.position.y <= 0) {
+
+    rig.position.y = 0;
+
+    if (velocity.y < 0) {
+      velocity.y = 0;
+    }
+  }
+
+  // ROOM BOUNDARIES
+  rig.position.x = THREE.MathUtils.clamp(
+    rig.position.x, -5.35, 5.35
+  );
+
+  rig.position.z = THREE.MathUtils.clamp(
+    rig.position.z, -5.35, 5.35
+  );
 
   renderer.render(scene, camera);
 });
 
+// RESIZE
 window.addEventListener('resize', () => {
-  camera.aspect = innerWidth / innerHeight;
+
+  camera.aspect =
+    window.innerWidth / window.innerHeight;
+
   camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
+
+  renderer.setSize(
+    window.innerWidth,
+    window.innerHeight
+  );
 });
+
 </script>
 </body>
 </html>
