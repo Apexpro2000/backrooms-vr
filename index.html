@@ -4,211 +4,532 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PROJECT BACKROOMS</title>
 <style>
-body { margin:0; overflow:hidden; background:#111; font-family:Arial,sans-serif; }
-canvas { display:block; }
+body {
+  margin: 0;
+  overflow: hidden;
+  background: #111;
+  font-family: Arial, sans-serif;
+}
+canvas { display: block; }
 #status {
-  position:fixed; top:10px; left:10px;
-  color:white; background:#000a; padding:8px;
-  z-index:2; font-size:14px;
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  color: white;
+  background: #000a;
+  padding: 8px;
+  z-index: 2;
+  font-size: 14px;
 }
 </style>
 </head>
 <body>
+
 <div id="status">PROJECT: BACKROOMS — Ready</div>
 
 <script type="module">
 import * as THREE from
 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+
 import { VRButton } from
 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/webxr/VRButton.js';
 
+// =====================================
 // SCENE
+// =====================================
+
 const scene = new THREE.Scene();
+
 scene.background = new THREE.Color(0x242019);
 scene.fog = new THREE.Fog(0x242019, 5, 24);
 
+// =====================================
 // CAMERA
-const camera = new THREE.PerspectiveCamera(
-  75, window.innerWidth/window.innerHeight, 0.1, 100
-);
-camera.position.set(0,0,0);
+// =====================================
 
+const camera = new THREE.PerspectiveCamera(
+  75,
+  window.innerWidth / window.innerHeight,
+  0.1,
+  100
+);
+
+camera.position.set(0, 0, 0);
+
+// =====================================
 // RENDERER
-const renderer = new THREE.WebGLRenderer({antialias:true});
-renderer.setSize(window.innerWidth,window.innerHeight);
-renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+// =====================================
+
+const renderer = new THREE.WebGLRenderer({
+  antialias: true
+});
+
+renderer.setSize(
+  window.innerWidth,
+  window.innerHeight
+);
+
+renderer.setPixelRatio(
+  Math.min(window.devicePixelRatio, 2)
+);
+
 renderer.xr.enabled = true;
 renderer.xr.setReferenceSpaceType('local-floor');
+
 document.body.appendChild(renderer.domElement);
 document.body.appendChild(VRButton.createButton(renderer));
 
-// PLAYER RIG
+// =====================================
+// PLAYER
+// =====================================
+
+// The rig represents the virtual player's movement.
+// The headset remains attached to this rig.
+
 const rig = new THREE.Group();
+
+rig.position.set(0, 0, 0);
+
 scene.add(rig);
 rig.add(camera);
 
-// LIGHTS
-scene.add(new THREE.AmbientLight(0xffffff,0.8));
-const light = new THREE.PointLight(0xffe5a0,2,20);
-light.position.set(0,2.8,0);
+// =====================================
+// LIGHTING
+// =====================================
+
+scene.add(
+  new THREE.AmbientLight(0xffffff, 0.8)
+);
+
+const light = new THREE.PointLight(
+  0xffe5a0,
+  2,
+  20
+);
+
+light.position.set(0, 2.8, 0);
 scene.add(light);
 
+// =====================================
 // FLOOR
+// =====================================
+
 const floor = new THREE.Mesh(
-  new THREE.PlaneGeometry(12,12),
-  new THREE.MeshStandardMaterial({color:0x82764e})
+  new THREE.PlaneGeometry(12, 12),
+  new THREE.MeshStandardMaterial({
+    color: 0x82764e
+  })
 );
-floor.rotation.x = -Math.PI/2;
+
+floor.rotation.x = -Math.PI / 2;
+floor.position.y = 0;
+
 scene.add(floor);
 
+// =====================================
 // WALLS
-const walls = [];
-const wallMaterial = new THREE.MeshStandardMaterial({color:0xd4c477});
+// =====================================
 
-function makeWall(x,y,z,w,h,d) {
+const walls = [];
+
+const wallMaterial = new THREE.MeshStandardMaterial({
+  color: 0xd4c477
+});
+
+function makeWall(x, y, z, w, h, d) {
+
   const wall = new THREE.Mesh(
-    new THREE.BoxGeometry(w,h,d),wallMaterial
+    new THREE.BoxGeometry(w, h, d),
+    wallMaterial
   );
-  wall.position.set(x,y,z);
+
+  wall.position.set(x, y, z);
+
   scene.add(wall);
   walls.push(wall);
 }
 
-makeWall(0,1.5,-6,12,3,0.3);
-makeWall(0,1.5,6,12,3,0.3);
-makeWall(-6,1.5,0,0.3,3,12);
-makeWall(6,1.5,0,0.3,3,12);
-makeWall(2,1.5,-2,0.3,3,5);
-makeWall(-2,1.5,2,5,3,0.3);
+// Room boundaries
+
+makeWall(0, 1.5, -6, 12, 3, 0.3);
+makeWall(0, 1.5, 6, 12, 3, 0.3);
+makeWall(-6, 1.5, 0, 0.3, 3, 12);
+makeWall(6, 1.5, 0, 0.3, 3, 12);
+
+// Maze walls
+
+makeWall(2, 1.5, -2, 0.3, 3, 5);
+makeWall(-2, 1.5, 2, 5, 3, 0.3);
+
+// Create collision boxes
 
 scene.updateMatrixWorld(true);
-const wallBoxes = walls.map(w => new THREE.Box3().setFromObject(w));
 
-// CONTROLLERS
+const wallBoxes = walls.map(wall =>
+  new THREE.Box3().setFromObject(wall)
+);
+
+// =====================================
+// VR CONTROLLERS
+// =====================================
+
+// IMPORTANT:
+// Controllers are attached directly to the scene.
+// They are NOT attached to the moving player rig.
+
 const hands = [];
-const previousHands = [];
-const handReady = [false,false];
+const handVisuals = [];
 
-const handGeometry = new THREE.SphereGeometry(0.11,16,16);
-const handMaterial = new THREE.MeshStandardMaterial({color:0xffcc99});
+const previousHandPositions = [
+  new THREE.Vector3(),
+  new THREE.Vector3()
+];
 
-for(let i=0;i<2;i++) {
-  // Controller object tracks the actual controller pose.
-  const hand = renderer.xr.getController(i);
-  const visual = new THREE.Mesh(handGeometry,handMaterial);
-  hand.add(visual);
-  rig.add(hand);
+const handReady = [false, false];
+const controllerConnected = [false, false];
+
+const handGeometry = new THREE.SphereGeometry(
+  0.12, 16, 16
+);
+
+const handMaterial = new THREE.MeshStandardMaterial({
+  color: 0xffcc99
+});
+
+for (let i = 0; i < 2; i++) {
+
+  const hand = renderer.xr.getControllerGrip(i);
+
+  scene.add(hand);
+
   hands.push(hand);
-  previousHands.push(new THREE.Vector3());
+
+  const visual = new THREE.Mesh(
+    handGeometry,
+    handMaterial
+  );
+
+  scene.add(visual);
+
+  handVisuals.push(visual);
+
+  hand.addEventListener('connected', () => {
+    controllerConnected[i] = true;
+    handReady[i] = false;
+  });
+
+  hand.addEventListener('disconnected', () => {
+    controllerConnected[i] = false;
+    handReady[i] = false;
+  });
 }
 
-// PHYSICS
-const velocity = new THREE.Vector3();
+// =====================================
+// PHYSICS SETTINGS
+// =====================================
+
 const gravity = 9.8;
-const handWorld = new THREE.Vector3();
-const handSphere = new THREE.Sphere(new THREE.Vector3(),0.14);
-const pushVector = new THREE.Vector3();
+
+const velocity = new THREE.Vector3();
+
 const playerRadius = 0.28;
+const handRadius = 0.14;
+
+const handWorld = new THREE.Vector3();
+const virtualHand = new THREE.Vector3();
+
+const handSphere = new THREE.Sphere(
+  new THREE.Vector3(),
+  handRadius
+);
+
+const pushVector = new THREE.Vector3();
+
 let grounded = true;
 
-function handTouchesWorld(hand) {
-  hand.getWorldPosition(handWorld);
-  handSphere.center.copy(handWorld);
+// =====================================
+// HAND COLLISION
+// =====================================
 
-  // Floor contact
-  if(handWorld.y < 0.25 &&
-     Math.abs(handWorld.x) < 5.8 &&
-     Math.abs(handWorld.z) < 5.8) return true;
+function handTouchesWorld(position) {
+
+  handSphere.center.copy(position);
+
+  // Virtual floor contact
+
+  if (
+    position.y <= handRadius + 0.04 &&
+    Math.abs(position.x) < 5.8 &&
+    Math.abs(position.z) < 5.8
+  ) {
+    return true;
+  }
 
   // Wall contact
-  for(const box of wallBoxes) {
-    if(box.intersectsSphere(handSphere)) return true;
+
+  for (const box of wallBoxes) {
+
+    if (box.intersectsSphere(handSphere)) {
+      return true;
+    }
   }
+
   return false;
 }
 
-// Keep player inside room and above floor
-function resolvePlayer() {
+// =====================================
+// PLAYER COLLISION
+// =====================================
+
+function resolvePlayerCollisions() {
+
+  // Outer room boundaries
+
   const min = -5.55 + playerRadius;
   const max = 5.55 - playerRadius;
 
-  rig.position.x = THREE.MathUtils.clamp(rig.position.x,min,max);
-  rig.position.z = THREE.MathUtils.clamp(rig.position.z,min,max);
+  rig.position.x = THREE.MathUtils.clamp(
+    rig.position.x,
+    min,
+    max
+  );
 
-  // Prevent player center from passing through the floor.
-  if(rig.position.y < 0) {
-    rig.position.y = 0;
-    if(velocity.y < 0) velocity.y = 0;
-    grounded = true;
-  } else {
-    grounded = rig.position.y <= 0.001;
+  rig.position.z = THREE.MathUtils.clamp(
+    rig.position.z,
+    min,
+    max
+  );
+
+  // Internal wall collision
+
+  for (const box of wallBoxes) {
+
+    const minX = box.min.x - playerRadius;
+    const maxX = box.max.x + playerRadius;
+
+    const minZ = box.min.z - playerRadius;
+    const maxZ = box.max.z + playerRadius;
+
+    const insideX =
+      rig.position.x > minX &&
+      rig.position.x < maxX;
+
+    const insideZ =
+      rig.position.z > minZ &&
+      rig.position.z < maxZ;
+
+    if (insideX && insideZ) {
+
+      const left = rig.position.x - minX;
+      const right = maxX - rig.position.x;
+
+      const back = rig.position.z - minZ;
+      const front = maxZ - rig.position.z;
+
+      const smallest = Math.min(
+        left, right, back, front
+      );
+
+      if (smallest === left) {
+        rig.position.x = minX;
+      } else if (smallest === right) {
+        rig.position.x = maxX;
+      } else if (smallest === back) {
+        rig.position.z = minZ;
+      } else {
+        rig.position.z = maxZ;
+      }
+    }
   }
 }
 
-// ANIMATION
-renderer.setAnimationLoop((time,frame) => {
+// =====================================
+// GRAVITY AND FLOOR COLLISION
+// =====================================
+
+function updatePhysics(dt) {
+
+  // Gravity always pulls downward.
+
+  velocity.y -= gravity * dt;
+
+  rig.position.y += velocity.y * dt;
+
+  // Virtual floor is always at Y = 0.
+
+  if (rig.position.y <= 0) {
+
+    rig.position.y = 0;
+
+    if (velocity.y < 0) {
+      velocity.y = 0;
+    }
+
+    grounded = true;
+
+  } else {
+
+    grounded = false;
+  }
+}
+
+// =====================================
+// RESET TRACKING
+// =====================================
+
+renderer.xr.addEventListener('sessionstart', () => {
+
+  rig.position.set(0, 0, 0);
+
+  velocity.set(0, 0, 0);
+
+  handReady[0] = false;
+  handReady[1] = false;
+});
+
+renderer.xr.addEventListener('sessionend', () => {
+
+  handReady[0] = false;
+  handReady[1] = false;
+});
+
+// =====================================
+// MAIN GAME LOOP
+// =====================================
+
+renderer.setAnimationLoop((time, frame) => {
+
   const dt = Math.min(
-    renderer.xr.isPresenting ? 1/72 : 1/60,
+    renderer.xr.isPresenting ? 1 / 72 : 1 / 60,
     0.04
   );
 
   let tracked = 0;
 
-  for(let i=0;i<2;i++) {
+  // -----------------------------------
+  // HAND MOVEMENT
+  // -----------------------------------
+
+  for (let i = 0; i < 2; i++) {
+
     const hand = hands[i];
 
-    // Controller position in world space.
+    // Get the controller's tracked position
+    // independently from the player rig.
+
     hand.getWorldPosition(handWorld);
+
     const current = handWorld.clone();
 
-    tracked++;
-
-    if(!handReady[i]) {
-      previousHands[i].copy(current);
-      handReady[i] = true;
+    if (!Number.isFinite(current.x) ||
+        !Number.isFinite(current.y) ||
+        !Number.isFinite(current.z)) {
       continue;
     }
 
-    if(handTouchesWorld(hand)) {
-      // Move opposite to the controller's movement.
-      pushVector.copy(previousHands[i]).sub(current);
+    if (controllerConnected[i]) {
+      tracked++;
+    }
 
-      // Only apply horizontal arm-push movement.
-      pushVector.y = 0;
+    // First tracking frame initializes position.
 
-      if(pushVector.length() > 0.01) {
+    if (!handReady[i]) {
+
+      previousHandPositions[i].copy(current);
+
+      handReady[i] = true;
+
+      continue;
+    }
+
+    // Convert tracked hand position into
+    // its virtual position in the game world.
+
+    virtualHand.copy(current).add(rig.position);
+
+    // Check whether the virtual hand touches
+    // the virtual floor or a wall.
+
+    if (handTouchesWorld(virtualHand)) {
+
+      pushVector
+        .copy(previousHandPositions[i])
+        .sub(current);
+
+      // Ignore tiny tracking noise.
+
+      if (pushVector.length() > 0.01) {
+
+        // Push the player opposite to hand movement.
+
         rig.position.add(pushVector);
       }
     }
 
-    previousHands[i].copy(current);
+    // Save the tracked position, not the virtual one.
+
+    previousHandPositions[i].copy(current);
   }
 
-  // Gravity
-  if(!grounded) {
-    velocity.y -= gravity*dt;
-    rig.position.y += velocity.y*dt;
-  } else {
-    velocity.y = 0;
+  // -----------------------------------
+  // GRAVITY
+  // -----------------------------------
+
+  updatePhysics(dt);
+
+  // -----------------------------------
+  // PLAYER WALL COLLISIONS
+  // -----------------------------------
+
+  resolvePlayerCollisions();
+
+  // -----------------------------------
+  // HAND VISUALS
+  // -----------------------------------
+
+  for (let i = 0; i < 2; i++) {
+
+    hands[i].getWorldPosition(handWorld);
+
+    handVisuals[i].position
+      .copy(handWorld)
+      .add(rig.position);
   }
 
-  resolvePlayer();
+  // -----------------------------------
+  // STATUS
+  // -----------------------------------
 
   document.getElementById('status').textContent =
     renderer.xr.isPresenting
-      ? 'VR ACTIVE — Controllers: '+tracked+
+      ? 'VR ACTIVE — Controllers: ' + tracked +
         (grounded ? ' — GROUNDED' : ' — FALLING')
       : 'PROJECT: BACKROOMS — Enter VR to play';
 
-  renderer.render(scene,camera);
+  // -----------------------------------
+  // RENDER
+  // -----------------------------------
+
+  renderer.render(scene, camera);
 });
 
+// =====================================
 // RESIZE
-window.addEventListener('resize',()=>{
-  camera.aspect=window.innerWidth/window.innerHeight;
+// =====================================
+
+window.addEventListener('resize', () => {
+
+  camera.aspect =
+    window.innerWidth / window.innerHeight;
+
   camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth,window.innerHeight);
+
+  renderer.setSize(
+    window.innerWidth,
+    window.innerHeight
+  );
 });
+
 </script>
 </body>
 </html>
